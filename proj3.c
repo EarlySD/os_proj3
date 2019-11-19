@@ -5,6 +5,7 @@ int getBytesFromOffset(FILE *ptr, int numOfBytes, int Offset);
 void getClusterLocations(FILE *ptr, int FATRegionStart, int firstFileCluster);
 void printTextFromSector(FILE *ptr, int clusterStart, int bytesPerSec);
 void parseFileEntry(FILE *ptr, int fileEntryAddress);
+void getFilesFromDirCluster(FILE *ptr, int clusterStart, int bytesPerSec);
 
 void main(int argc, char *argv[])
 {
@@ -44,6 +45,8 @@ void main(int argc, char *argv[])
 	printTextFromSector(ptr, ((FirstDataSector + 431) * 512), BPB_BytesPerSector);
 
 	parseFileEntry(ptr, (FirstDataSector * 512) + 32);
+
+	getFilesFromDirCluster(ptr, FirstSectorofCluster * 512, 512);
 
 	fclose(ptr);
 }
@@ -112,6 +115,16 @@ void parseFileEntry(FILE *ptr, int fileEntryAddress)
 	printf("DIR_FstClusHi: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 20));
 	printf("DIR_WrtTime: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 22));
 	printf("DIR_WrtDate: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 24));
-	printf("DIR_FstClusLO: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 26));
+	printf("DIR_FstClusLO (FAT location for first cluster): 0x%x\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 26));
 	printf("DIR_FileSize: %d\n", getBytesFromOffset(ptr, 4, fileEntryAddress + 28));
+}
+
+void getFilesFromDirCluster(FILE *ptr, int clusterStart, int bytesPerSec)
+{
+	int i;
+
+	for(i = 0;i < bytesPerSec / 32;++i)
+	{
+		parseFileEntry(ptr, clusterStart + (i * 32));
+	}
 }
