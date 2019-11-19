@@ -4,6 +4,7 @@
 int getBytesFromOffset(FILE *ptr, int numOfBytes, int Offset);
 void getClusterLocations(FILE *ptr, int FATRegionStart, int firstFileCluster);
 void printTextFromSector(FILE *ptr, int clusterStart, int bytesPerSec);
+void parseFileEntry(FILE *ptr, int fileEntryAddress);
 
 void main(int argc, char *argv[])
 {
@@ -37,11 +38,12 @@ void main(int argc, char *argv[])
 
 	printf("Fat Region: 0x%x\n", BPB_ReservedSecCnt * 512);
 	printf("%08x\n", getBytesFromOffset(ptr, 4, (BPB_ReservedSecCnt * 512) + 8));	
-	getClusterLocations(ptr, BPB_ReservedSecCnt * 512, 3);
+	getClusterLocations(ptr, BPB_ReservedSecCnt * 512, 0x1b2);
 
 	printf("Data Region: 0x%x\n", FirstDataSector  * 512);
-	printTextFromSector(ptr, ((FirstDataSector + 1) * 512), BPB_BytesPerSector);
+	printTextFromSector(ptr, ((FirstDataSector + 431) * 512), BPB_BytesPerSector);
 
+	parseFileEntry(ptr, (FirstDataSector * 512) + 32);
 
 	fclose(ptr);
 }
@@ -64,6 +66,7 @@ void getClusterLocations(FILE *ptr, int FATRegionStart, int firstFileCluster)
 {
 	//Print out first file cluster
 	printf("0x%08x\n", firstFileCluster);
+	printTextFromSector(ptr, ((0x100400) + ((firstFileCluster - 2) * 512)), 512);
 
 	int clustNum = getBytesFromOffset(ptr, 4, FATRegionStart + (firstFileCluster * 4));
 	
@@ -71,7 +74,7 @@ void getClusterLocations(FILE *ptr, int FATRegionStart, int firstFileCluster)
 	while(clustNum != 0x0FFFFFF8 && clustNum != 0x0FFFFFFF)
 	{
 		printf("0x%08x\n", clustNum);	
-		//printTextFromSector(ptr, ((0x100400) + ((clustNum - 2) * 512)), 512);
+		printTextFromSector(ptr, ((0x100400) + ((clustNum - 2) * 512)), 512);
 		clustNum = getBytesFromOffset(ptr, 4, FATRegionStart + (clustNum * 4));
 	}
 }
@@ -84,4 +87,31 @@ void printTextFromSector(FILE *ptr, int clusterStart, int bytesPerSec)
 	{
 		printf("%c", getBytesFromOffset(ptr, 1, clusterStart + i));	
 	}
+}
+
+void parseFileEntry(FILE *ptr, int fileEntryAddress)
+{
+	char sname[12];
+
+	int i;
+	for(i = 0;i < 11;++i)
+	{
+		sname[i] = getBytesFromOffset(ptr, 1, fileEntryAddress + i);
+	}
+	sname[11] = '\0';
+
+	printf("ShortName: %s\n", sname);
+	printf("DIR_Attr: 0x%x\n", getBytesFromOffset(ptr, 1, fileEntryAddress + 11));
+	int crtTime = getBytesFromOffset(ptr, 2, fileEntryAddress + 14);
+	printf("DIR_CrtTime: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 14));
+	printf("DIR_CrtTime: %d:%d:%d\n", ((crtTime&0xf800) >> 11), (crtTime&0x7e0) >> 5, (crtTime&0x1f) * 2);
+	int crtDate = getBytesFromOffset(ptr, 2, fileEntryAddress + 16);
+	printf("DIR_CrtDate: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 16));
+	printf("DIR_CrtDate: %d/%d/%d\n", crtDate&0x1f, (crtDate&0x1e0) >> 5, ((crtDate&0xfe00) >> 9) + 1980);
+	printf("DIR_LstAccDate: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 18));
+	printf("DIR_FstClusHi: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 20));
+	printf("DIR_WrtTime: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 22));
+	printf("DIR_WrtDate: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 24));
+	printf("DIR_FstClusLO: %d\n", getBytesFromOffset(ptr, 2, fileEntryAddress + 26));
+	printf("DIR_FileSize: %d\n", getBytesFromOffset(ptr, 4, fileEntryAddress + 28));
 }
