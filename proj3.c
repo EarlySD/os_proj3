@@ -11,6 +11,7 @@ void main(int argc, char *argv[])
 {
 	unsigned int buffer[10];
 	FILE *ptr;
+	char userInput[255];
 
 	ptr = fopen(argv[1],"rb");  // r for read, b for binary
 
@@ -19,23 +20,13 @@ void main(int argc, char *argv[])
 	unsigned int BPB_ReservedSecCnt = getBytesFromOffset(ptr, 2, 14);
 	unsigned int BPB_NumFATs = getBytesFromOffset(ptr, 1, 16);
 	unsigned int BPB_RootEntCnt = getBytesFromOffset(ptr, 2, 17);
+	unsigned int BPB_TotSec = getBytesFromOffset(ptr, 4, 32);
 	unsigned int BPB_FATSz32 = getBytesFromOffset(ptr, 4, 36);
 	unsigned int BPB_RootClus = getBytesFromOffset(ptr, 4, 44);
 
 	int RootDirSectors = ((BPB_RootEntCnt * 32) + (BPB_BytesPerSector -1)) / BPB_BytesPerSector;
 	int FirstDataSector = BPB_ReservedSecCnt + (BPB_NumFATs * BPB_FATSz32) + RootDirSectors;
 	int FirstSectorofCluster = ((BPB_RootClus - 2) * BPB_SecPerClus)  + FirstDataSector;
-
-	printf("BPB_BytesPerSector: %d\n", BPB_BytesPerSector);
-	printf("BPB_SecPerClus: %d\n", BPB_SecPerClus);
-	printf("BPB_ReservedSecCnt: %d\n", BPB_ReservedSecCnt);
-	printf("BPB_NumFATs: %d\n", BPB_NumFATs);
-	printf("BPB_RootEntCnt: %d\n", BPB_RootEntCnt);
-	printf("BPB_FATSz32: %d\n", BPB_FATSz32);
-	printf("BPB_RootClus: %d\n", BPB_RootClus);
-	printf("RootDirSectors: %d\n", RootDirSectors);
-	printf("FirstDataSector: %d\n", FirstDataSector);
-	printf("FirstSectorofCluster: %x\n", FirstSectorofCluster);
 
 	printf("Fat Region: 0x%x\n", BPB_ReservedSecCnt * 512);
 	printf("%08x\n", getBytesFromOffset(ptr, 4, (BPB_ReservedSecCnt * 512) + 8));	
@@ -47,6 +38,27 @@ void main(int argc, char *argv[])
 	parseFileEntry(ptr, (FirstDataSector * 512) + 32);
 
 	getFilesFromDirCluster(ptr, FirstSectorofCluster * 512, 512);
+
+
+	while(strcmp(userInput, "exit") != 0)
+	{
+		scanf("%s", userInput);
+
+		if(strcmp(userInput, "info") == 0)
+		{
+			printf("BPB_BytesPerSector: %d\n", BPB_BytesPerSector);
+			printf("BPB_SecPerClus: %d\n", BPB_SecPerClus);
+			printf("BPB_ReservedSecCnt: %d\n", BPB_ReservedSecCnt);
+			printf("BPB_NumFATs: %d\n", BPB_NumFATs);
+			printf("BPB_RootEntCnt: %d\n", BPB_RootEntCnt);
+			printf("BPB_FATSz32: %d\n", BPB_FATSz32);
+			printf("BPB_RootClus: %d\n", BPB_RootClus);
+			printf("BPB_TotSec: %d\n", BPB_TotSec);
+			printf("RootDirSectors: %d\n", RootDirSectors);
+			printf("FirstDataSector: %d\n", FirstDataSector);
+			printf("FirstSectorofCluster: %x\n", FirstSectorofCluster);
+		}
+	}
 
 	fclose(ptr);
 }
@@ -125,6 +137,10 @@ void getFilesFromDirCluster(FILE *ptr, int clusterStart, int bytesPerSec)
 
 	for(i = 0;i < bytesPerSec / 32;++i)
 	{
-		parseFileEntry(ptr, clusterStart + (i * 32));
+		//Does not print info if first 4 bytes are all 0
+		//THIS SHOULD BE TEMPOARARY
+		//It should make sure all 32 bytes are zero, but I think they can only be checked 4 bytes at a time
+		if(getBytesFromOffset(ptr, 4, clusterStart + (i * 32)) != 0)
+			parseFileEntry(ptr, clusterStart + (i * 32));
 	}
 }
