@@ -6,6 +6,7 @@ void getClusterLocations(FILE *ptr, int FATRegionStart, int firstFileCluster);
 void printTextFromSector(FILE *ptr, int clusterStart, int bytesPerSec);
 void parseFileEntry(FILE *ptr, int fileEntryAddress);
 void getFilesFromDirCluster(FILE *ptr, int clusterStart, int bytesPerSec);
+void getSizeOfFileName(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart, char * fname);
 
 void main(int argc, char *argv[])
 {
@@ -58,6 +59,11 @@ void main(int argc, char *argv[])
 			printf("FirstDataSector: %d\n", FirstDataSector);
 			printf("FirstSectorofCluster: %x\n", FirstSectorofCluster);
 		}
+		else if(strcmp(userInput, "size") == 0)
+		{
+			getSizeOfFileName(ptr, 0x2, 512, FirstDataSector * 512, BPB_ReservedSecCnt * 512, "LONGFILE");
+		}
+
 	}
 
 	fclose(ptr);
@@ -140,7 +146,64 @@ void getFilesFromDirCluster(FILE *ptr, int clusterStart, int bytesPerSec)
 		//Does not print info if first 4 bytes are all 0
 		//THIS SHOULD BE TEMPOARARY
 		//It should make sure all 32 bytes are zero, but I think they can only be checked 4 bytes at a time
-		if(getBytesFromOffset(ptr, 4, clusterStart + (i * 32)) != 0)
-			parseFileEntry(ptr, clusterStart + (i * 32));
+		if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) != 0xE5)
+		{
+			if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) != 0x00)
+				parseFileEntry(ptr, clusterStart + (i * 32));
+			else
+				break;
+		}
 	}
+}
+
+//Searches the current directory for a provided filename, and prints the size of that file if it is found
+void getSizeOfFileName(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart, char * fname)
+{
+	int currentFatNum = firstDirFatNumber;	
+
+	do
+	{
+		//Gets the offset for the datasection cluster for the fat entry provided
+		int clusterStart = dataSectionStart + ((currentFatNum - 2) * 512);
+
+		//Loops through each file entry in a given cluster
+		int i;
+		for(i = 0;i < bytesPerSec / 32;++i)
+		{
+			//If a file entry starts with 0xE5, skip it because that file is deleted, but there are more files after it
+			if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) != 0xE5)
+			{
+				//If a file entry starts with 0x9, then there are no more files in that directory
+				if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) != 0x00)
+				{
+					char sname[12] = "";
+
+					//Loop gets the name of the file for a file entry, char by char
+					int j;
+					for(j = 0;j < 11;++j)
+					{
+						if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32) + j) == 0x20)
+							break;
+						sname[j] = getBytesFromOffset(ptr, 1, clusterStart + (i * 32) + j);
+					}
+					sname[j] = '\0';
+
+					//If the file name matches the file name provided, print out the size of that file
+					if(strcmp(sname, fname) == 0)
+					{
+						printf("DIR_FileSize: %d\n", getBytesFromOffset(ptr, 4, clusterStart + (i * 32) + 28));
+						break;
+					}
+				}
+				else
+				{
+					//If filename was not found
+					printf("File not found\n");
+					break;
+				}
+			}
+		}
+
+		currentFatNum = getBytesFromOffset(ptr, 4, FatSectionStart + (currentFatNum * 4));
+	}while(currentFatNum != 0x0FFFFFF8 && currentFatNum != 0x0FFFFFFF);
 }
