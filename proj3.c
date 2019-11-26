@@ -17,6 +17,7 @@ struct fileStruct
 };
 
 int getBytesFromOffset(FILE *ptr, int numOfBytes, int Offset);
+int writeBytesToOffset(FILE *fptr, int byteToWrite, int numOfBytes, int Offset);
 void getClusterLocations(FILE *ptr, int FATRegionStart, int firstFileCluster);
 void printTextFromSector(FILE *ptr, int clusterStart, int bytesPerSec);
 struct fileStruct parseFileEntry(FILE *ptr, int fileEntryAddress);
@@ -26,6 +27,11 @@ void getFilesFromDirCluster(FILE *ptr, int firstDirFatNumber, int bytesPerSec, i
 void getSizeOfFileName(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart, char * fname);
 void printDirContents(FILE *ptr, int firstCurDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart, char * dirName);
 struct fileStruct searchDirForFile(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart, char * fname);
+struct fileStruct searchDirForDir(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart, char * fname);
+int searchDirForEmptyFileEntry(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart);
+int searchFATForEmptyEntry(FILE *ptr, int dataSectionStart, int FatSectionStart);
+void createEmptyFileAtOffset(FILE *ptr, int offset, char * fileName, int fatEntry, int dataSectionStart, int FatSectionStart);
+void createEmptyDirAtOffset(FILE *ptr, int offset, char * fileName, int fatEntry, int fatEntryForParentDir, int dataSectionStart, int FatSectionStart);
 
 void main(int argc, char *argv[])
 {
@@ -36,7 +42,7 @@ void main(int argc, char *argv[])
 	char arg2[255];
 	char arg3[255];
 
-	ptr = fopen(argv[1],"rb");  // r for read, b for binary
+	ptr = fopen(argv[1],"r+b");  // r for read, b for binary
 
 	unsigned int BPB_BytesPerSector = getBytesFromOffset(ptr, 2, 11);
 	unsigned int BPB_SecPerClus = getBytesFromOffset(ptr, 1, 13);
@@ -93,12 +99,14 @@ void main(int argc, char *argv[])
 			//getSizeOfFileName(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
 			if(strcmp(tfile.name, "") != 0)
 				printf("File size: %d\n", tfile.FileSize);
+			else
+				printf("File not found\n");
 		}
 		else if(strcmp(userInput, "ls") == 0)
 		{
 			scanf("%s", arg1);
 			
-			struct fileStruct tfile = searchDirForFile(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
+			struct fileStruct tfile = searchDirForDir(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
 			//getSizeOfFileName(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
 			if(strcmp(tfile.name, "") != 0)
 			{
@@ -106,14 +114,15 @@ void main(int argc, char *argv[])
 					getFilesFromDirCluster(ptr, 0x2, 512, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
 				else
 					getFilesFromDirCluster(ptr, tfile.FstClusLO, 512, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
-					
 			}
+			else
+				printf("Directory not found\n");
 		}
 		else if(strcmp(userInput, "cd") == 0)
 		{
 			scanf("%s", arg1);
 			
-			struct fileStruct tfile = searchDirForFile(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
+			struct fileStruct tfile = searchDirForDir(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
 			//getSizeOfFileName(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
 			if(strcmp(tfile.name, "") != 0)
 			{
@@ -122,8 +131,41 @@ void main(int argc, char *argv[])
 				else
 					firstFATforCurDir = tfile.FstClusLO;
 			}
+			else
+				printf("Directory not found\n");
 		}
+		else if(strcmp(userInput, "creat") == 0)
+		{
+			scanf("%s", arg1);
+			
+			struct fileStruct tfile = searchDirForFile(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
+			
+			if(strcmp(tfile.name, "") != 0)
+				printf("File already exists in this directory\n");
+			else
+			{
+				int locOffset = searchDirForEmptyFileEntry(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
+				int fatEntry = searchFATForEmptyEntry(ptr, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
 
+				createEmptyFileAtOffset(ptr, locOffset, arg1, fatEntry, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
+			}
+		}
+		else if(strcmp(userInput, "mkdir") == 0)
+		{
+			scanf("%s", arg1);
+			
+			struct fileStruct tfile = searchDirForDir(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
+			
+			if(strcmp(tfile.name, "") != 0)
+				printf("Directory already exists in this directory\n");
+			else
+			{
+				int locOffset = searchDirForEmptyFileEntry(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
+				int fatEntry = searchFATForEmptyEntry(ptr, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
+
+				createEmptyDirAtOffset(ptr, locOffset, arg1, fatEntry, firstFATforCurDir, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
+			}
+		}
 	}
 
 	fclose(ptr);
@@ -140,6 +182,17 @@ int getBytesFromOffset(FILE *fptr, int numOfBytes, int Offset)
 	temp[0] = 0;
 	fread(temp, 1, numOfBytes, fptr);
 	return temp[0];
+}
+
+int writeBytesToOffset(FILE *fptr, int byteToWrite, int numOfBytes, int Offset)
+{
+	//Sets ptr to location at Offset bytes
+	fseek(fptr, Offset, SEEK_SET);
+
+	//Read number of specified bytes from speicifies offset and return it
+	unsigned int temp[1];
+	temp[0] = byteToWrite;
+	fwrite(temp, numOfBytes, 1, fptr);
 }
 
 //Prints out all cluster locations for a given starting cluster of a file in the FAT region
@@ -247,7 +300,11 @@ void getFilesFromDirCluster(FILE *ptr, int firstDirFatNumber, int bytesPerSec, i
 			if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) != 0xE5)
 			{
 				if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) != 0x00)
-					printFileEntry(ptr, clusterStart + (i * 32));
+				{
+					//Checks for Long file name entry by checking if FstClusLo is 0 and file name is not ..
+					if(getBytesFromOffset(ptr, 2, clusterStart + (i * 32) + 26) != 0x0 || (getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) == '.' && getBytesFromOffset(ptr, 1, clusterStart + (i * 32) + 1) == '.'))
+						printFileEntry(ptr, clusterStart + (i * 32));
+				}
 				else
 					break;
 			}
@@ -289,7 +346,7 @@ struct fileStruct searchDirForFile(FILE *ptr, int firstDirFatNumber, int bytesPe
 					sname[j] = '\0';
 
 					//If the file name matches the file name provided, print out the size of that file
-					if(strcmp(sname, fname) == 0)
+					if(strcmp(sname, fname) == 0 && getBytesFromOffset(ptr, 1, clusterStart + (i * 32) + 11) != 0x10)
 					{
 						return parseFileEntry(ptr, clusterStart + (i * 32));
 					}
@@ -297,7 +354,57 @@ struct fileStruct searchDirForFile(FILE *ptr, int firstDirFatNumber, int bytesPe
 				else
 				{
 					//If filename was not found
-					printf("File not found\n");
+					struct fileStruct fs = {""};
+					return fs;
+					break;
+				}
+			}
+		}
+
+		currentFatNum = getBytesFromOffset(ptr, 4, FatSectionStart + (currentFatNum * 4));
+	}while(currentFatNum != 0x0FFFFFF8 && currentFatNum != 0x0FFFFFFF);
+}
+
+struct fileStruct searchDirForDir(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart, char * fname)
+{
+	int currentFatNum = firstDirFatNumber;	
+
+	do
+	{
+		//Gets the offset for the datasection cluster for the fat entry provided
+		int clusterStart = dataSectionStart + ((currentFatNum - 2) * 512);
+
+		//Loops through each file entry in a given cluster
+		int i;
+		for(i = 0;i < bytesPerSec / 32;++i)
+		{
+			//If a file entry starts with 0xE5, skip it because that file is deleted, but there are more files after it
+			if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) != 0xE5)
+			{
+				//If a file entry starts with 0x9, then there are no more files in that directory
+				if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) != 0x00)
+				{
+					char sname[12] = "";
+
+					//Loop gets the name of the file for a file entry, char by char
+					int j;
+					for(j = 0;j < 11;++j)
+					{
+						if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32) + j) == 0x20)
+							break;
+						sname[j] = getBytesFromOffset(ptr, 1, clusterStart + (i * 32) + j);
+					}
+					sname[j] = '\0';
+
+					//If the file name matches the file name provided, print out the size of that file
+					if(strcmp(sname, fname) == 0 && getBytesFromOffset(ptr, 1, clusterStart + (i * 32) + 11) == 0x10)
+					{
+						return parseFileEntry(ptr, clusterStart + (i * 32));
+					}
+				}
+				else
+				{
+					//If filename was not found
 					struct fileStruct fs = {""};
 					return fs;
 					break;
@@ -411,4 +518,210 @@ void printDirContents(FILE *ptr, int firstCurDirFatNumber, int bytesPerSec, int 
 
 		currentFatNum = getBytesFromOffset(ptr, 4, FatSectionStart + (currentFatNum * 4));
 	}while(currentFatNum != 0x0FFFFFF8 && currentFatNum != 0x0FFFFFFF);
+}
+
+int searchDirForEmptyFileEntry(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart)
+{
+	int currentFatNum = firstDirFatNumber;	
+	int dataInCurrentFat = currentFatNum;
+
+	do
+	{
+		currentFatNum = dataInCurrentFat;
+
+		//Gets the offset for the datasection cluster for the fat entry provided
+		int clusterStart = dataSectionStart + ((currentFatNum - 2) * 512);
+
+		//Loops through each file entry in a given cluster
+		int i;
+		for(i = 0;i < bytesPerSec / 32;++i)
+		{
+			//If a file entry starts with 0xE5, skip it because that file is deleted, but there are more files after it
+			if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) == 0xE5 || getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) == 0x0)
+			{
+				return clusterStart + (i * 32);
+			}
+		}
+
+		dataInCurrentFat = getBytesFromOffset(ptr, 4, FatSectionStart + (currentFatNum * 4));
+	}while(dataInCurrentFat != 0x0FFFFFF8 && dataInCurrentFat != 0x0FFFFFFF);
+
+	//If there was no extra room in directory clusters, create next cluster for directory
+	int newFat = searchFATForEmptyEntry(ptr, dataSectionStart, FatSectionStart);
+	
+	//Update FAT table info
+	writeBytesToOffset(ptr, newFat, 4, FatSectionStart + (currentFatNum * 4));
+	writeBytesToOffset(ptr, 0x0FFFFFF8, 4, FatSectionStart + (newFat * 4));
+
+	//Zero out new data section
+	int i;
+	for(i = 0;i < 512;++i)
+	{
+		writeBytesToOffset(ptr, 0x0, 1, dataSectionStart + ((newFat - 2) * 512) + i);
+	}
+
+	return dataSectionStart + ((newFat - 2) * 512);
+}
+
+int searchFATForEmptyEntry(FILE *ptr, int dataSectionStart, int FatSectionStart)
+{
+	int currentFatNum = 0x2;
+
+	do
+	{
+		if(getBytesFromOffset(ptr, 4, FatSectionStart + (currentFatNum * 4)) == 0x0)
+		{
+			return currentFatNum;
+		}
+
+		++currentFatNum;
+	}while(currentFatNum != dataSectionStart);
+}
+
+void createEmptyFileAtOffset(FILE *ptr, int offset, char * fileName, int fatEntry, int dataSectionStart, int FatSectionStart)
+{	
+	int i;
+
+	//Write file's name to file entry
+	for(i = 0;i < 11; ++i)
+	{
+		writeBytesToOffset(ptr, fileName[i], 1, offset + i);
+		if(fileName[i] == '\0')
+			break;
+	}
+	//Write null characters for remaining space after name
+	for(i = i;i < 11; ++i)
+	{
+		writeBytesToOffset(ptr, 0x20, 1, offset + i);
+	}
+
+	//Write fat entry to file	
+	writeBytesToOffset(ptr, fatEntry & 0xffff, 2, offset + 26);
+	writeBytesToOffset(ptr, (fatEntry & 0xffff0000) >> 16, 2, offset + 20);
+	writeBytesToOffset(ptr, 0x0FFFFFF8, 4, FatSectionStart + (fatEntry * 4));
+
+	//Write attr to file entry
+	writeBytesToOffset(ptr, 0x20, 1, offset + 11);
+
+	//Zero out timestamps, as they are not used in this project
+	writeBytesToOffset(ptr, 0x0, 2, offset + 14);//crtTime
+	writeBytesToOffset(ptr, 0x0, 2, offset + 16);//crtDate
+	writeBytesToOffset(ptr, 0x0, 2, offset + 18);//LstAccDate
+	writeBytesToOffset(ptr, 0x0, 2, offset + 22);//WrtTime
+	writeBytesToOffset(ptr, 0x0, 2, offset + 24);//WrtDate
+
+	//Write file size to file entry
+	writeBytesToOffset(ptr, 0x0, 4, offset + 28);
+
+	for(i = 0;i < 512;++i)
+	{
+		writeBytesToOffset(ptr, 0x0, 1, dataSectionStart + ((fatEntry - 2) * 512) + i);
+	}
+	
+}
+
+void createEmptyDirAtOffset(FILE *ptr, int offset, char * fileName, int fatEntry, int fatEntryForParentDir, int dataSectionStart, int FatSectionStart)
+{	
+	int i;
+
+	//Write file's name to file entry
+	for(i = 0;i < 11; ++i)
+	{
+		writeBytesToOffset(ptr, fileName[i], 1, offset + i);
+		if(fileName[i] == '\0')
+			break;
+	}
+	//Write null characters for remaining space after name
+	for(i = i;i < 11; ++i)
+	{
+		writeBytesToOffset(ptr, 0x20, 1, offset + i);
+	}
+
+	//Write fat entry to file	
+	writeBytesToOffset(ptr, fatEntry & 0xffff, 2, offset + 26);
+	writeBytesToOffset(ptr, (fatEntry & 0xffff0000) >> 16, 2, offset + 20);
+	writeBytesToOffset(ptr, 0x0FFFFFF8, 4, FatSectionStart + (fatEntry * 4));
+
+	//Write attr to file entry
+	writeBytesToOffset(ptr, 0x10, 1, offset + 11);
+
+	//Zero out timestamps, as they are not used in this project
+	writeBytesToOffset(ptr, 0x0, 2, offset + 14);//crtTime
+	writeBytesToOffset(ptr, 0x0, 2, offset + 16);//crtDate
+	writeBytesToOffset(ptr, 0x0, 2, offset + 18);//LstAccDate
+	writeBytesToOffset(ptr, 0x0, 2, offset + 22);//WrtTime
+	writeBytesToOffset(ptr, 0x0, 2, offset + 24);//WrtDate
+
+	//Write file size to file entry
+	writeBytesToOffset(ptr, 0x0, 4, offset + 28);
+
+	for(i = 0;i < 512;++i)
+	{
+		writeBytesToOffset(ptr, 0x0, 1, dataSectionStart + ((fatEntry - 2) * 512) + i);
+	}
+
+
+
+	//Create . for new dir
+	offset = dataSectionStart + ((fatEntry - 2) * 512);
+
+	i = 0;
+	writeBytesToOffset(ptr, '.', 1, offset + i++);
+
+	//Write null characters for remaining space after name
+	for(i = i;i < 11; ++i)
+	{
+		writeBytesToOffset(ptr, 0x20, 1, offset + i);
+	}
+
+	//Write fat entry to file	
+	writeBytesToOffset(ptr, fatEntry & 0xffff, 2, offset + 26);
+	writeBytesToOffset(ptr, (fatEntry & 0xffff0000) >> 16, 2, offset + 20);
+
+	//Write attr to file entry
+	writeBytesToOffset(ptr, 0x10, 1, offset + 11);
+
+	//Zero out timestamps, as they are not used in this project
+	writeBytesToOffset(ptr, 0x0, 2, offset + 14);//crtTime
+	writeBytesToOffset(ptr, 0x0, 2, offset + 16);//crtDate
+	writeBytesToOffset(ptr, 0x0, 2, offset + 18);//LstAccDate
+	writeBytesToOffset(ptr, 0x0, 2, offset + 22);//WrtTime
+	writeBytesToOffset(ptr, 0x0, 2, offset + 24);//WrtDate
+
+	//Write file size to file entry
+	writeBytesToOffset(ptr, 0x0, 4, offset + 28);
+
+
+
+
+	//Create .. for new dir
+	offset += 32;
+
+	i = 0;
+	writeBytesToOffset(ptr, '.', 1, offset + i++);
+	writeBytesToOffset(ptr, '.', 1, offset + i++);
+
+	//Write null characters for remaining space after name
+	for(i = i;i < 11; ++i)
+	{
+		writeBytesToOffset(ptr, 0x20, 1, offset + i);
+	}
+
+	//Write fat entry to file	
+	writeBytesToOffset(ptr, fatEntryForParentDir & 0xffff, 2, offset + 26);
+	writeBytesToOffset(ptr, (fatEntryForParentDir & 0xffff0000) >> 16, 2, offset + 20);
+
+	//Write attr to file entry
+	writeBytesToOffset(ptr, 0x10, 1, offset + 11);
+
+	//Zero out timestamps, as they are not used in this project
+	writeBytesToOffset(ptr, 0x0, 2, offset + 14);//crtTime
+	writeBytesToOffset(ptr, 0x0, 2, offset + 16);//crtDate
+	writeBytesToOffset(ptr, 0x0, 2, offset + 18);//LstAccDate
+	writeBytesToOffset(ptr, 0x0, 2, offset + 22);//WrtTime
+	writeBytesToOffset(ptr, 0x0, 2, offset + 24);//WrtDate
+
+	//Write file size to file entry
+	writeBytesToOffset(ptr, 0x0, 4, offset + 28);
+
 }
