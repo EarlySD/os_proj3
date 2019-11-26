@@ -245,7 +245,6 @@ void main(int argc, char *argv[])
 			else
 				printf("File not found\n");
 		}
-
 		else if(strcmp(userInput, "printFTable") == 0)
 		{
 			int i;
@@ -253,6 +252,70 @@ void main(int argc, char *argv[])
 			{
 				printf("%d: %s %d\n", i, openFileNames[i], openFilePermissions[i]);
 			}
+		}
+		else if(strcmp(userInput, "read") == 0)
+		{
+			int intarg2;
+			int intarg3;
+
+			scanf("%s", arg1);
+			scanf("%d", &intarg2);
+			scanf("%d", &intarg3);
+			
+			struct fileStruct tfile = searchDirForFile(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
+
+			//If file exists
+			if(strcmp(tfile.name, "") != 0)
+			{
+				//Appends directory fat number entry to end of file in order to make it unique in the file table to other files with the same name but in different directories
+				char openFileDir[263];
+				snprintf(openFileDir, 8, "%x", firstFATforCurDir);
+				strcat(openFileDir, arg1);
+		
+				int i;
+				for(i = 0;i < fileTableSize;++i)
+				{
+					//If file is open for reading
+					if((openFilePermissions[i] == 1 || openFilePermissions[i] == 3) && strcmp(openFileDir, openFileNames[i]) == 0)
+					{
+						if(tfile.FileSize < intarg2)
+						{
+							printf("Offset larger than file size\n");
+							break;
+						}
+						else
+						{
+							int j;
+							int curFileDataCluster = tfile.FstClusLO;
+
+							for(j = 0;j < (intarg2 / 512);++j)
+							{
+								curFileDataCluster = getBytesFromOffset(ptr, 4, (BPB_ReservedSecCnt * 512) + (curFileDataCluster * 4));
+							}
+
+							int k = intarg2 % 512;
+
+							for(j = 0;j < intarg3 && j + intarg2 < tfile.FileSize;++j)
+							{
+								printf("%c", getBytesFromOffset(ptr, 1, (FirstDataSector * 512) + ((curFileDataCluster - 2) * 512) + k));
+
+								if(++k >= 512)
+								{
+									k = 0;
+									curFileDataCluster = getBytesFromOffset(ptr, 4, (BPB_ReservedSecCnt * 512) + (curFileDataCluster * 4));
+								}
+							}	
+						}
+
+						break;
+					}
+				}
+
+				if(i == fileTableSize)
+					printf("File not open for reading\n");
+			}
+			else
+				printf("File not found\n");
 		}
 	}
 
