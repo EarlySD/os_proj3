@@ -42,6 +42,10 @@ void main(int argc, char *argv[])
 	char arg2[255];
 	char arg3[255];
 
+	char openFileNames[255][255];//[NumOfFiles][SizeOfFileNames]
+	int openFilePermissions[255];//0 = closed;1 = r;2 = w;3 = rw
+	int fileTableSize = 255;
+
 	ptr = fopen(argv[1],"r+b");  // r for read, b for binary
 
 	unsigned int BPB_BytesPerSector = getBytesFromOffset(ptr, 2, 11);
@@ -67,11 +71,6 @@ void main(int argc, char *argv[])
 	printTextFromSector(ptr, ((FirstDataSector + 431) * 512), BPB_BytesPerSector);
 
 	parseFileEntry(ptr, (FirstDataSector * 512) + 32);
-
-	//getFilesFromDirCluster(ptr, FirstSectorofCluster * 512, 512);
-
-	struct fileStruct test = searchDirForFile(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, "LONGFILE");
-	printf("search res: %s\n", test.name);
 
 	while(strcmp(userInput, "exit") != 0)
 	{
@@ -164,6 +163,95 @@ void main(int argc, char *argv[])
 				int fatEntry = searchFATForEmptyEntry(ptr, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
 
 				createEmptyDirAtOffset(ptr, locOffset, arg1, fatEntry, firstFATforCurDir, FirstDataSector * 512, BPB_ReservedSecCnt * 512);
+			}
+		}
+		else if(strcmp(userInput, "open") == 0)
+		{
+			scanf("%s", arg1);
+			scanf("%s", arg2);
+			
+			struct fileStruct tfile = searchDirForFile(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
+
+			if(strcmp(tfile.name, "") != 0)
+			{
+				//Appends directory fat number entry to end of file in order to make it unique in the file table to other files with the same name but in different directories
+				char openFileDir[8];
+				snprintf(openFileDir, 8, "%x", firstFATforCurDir);
+				strcat(openFileDir, arg1);
+		
+				int i;
+				for(i = 0;i < fileTableSize;++i)
+				{
+					if(openFilePermissions[i] != 0 && strcmp(openFileDir, openFileNames[i]) == 0)
+					{
+						printf("File already open\n");
+						break;
+					}
+				}
+
+				if(i == fileTableSize)
+				{
+					for(i = 0;i < fileTableSize;++i)
+					{
+						//Found open slot in file table
+						if(openFilePermissions[i] == 0)
+						{
+							//Appends directory fat number entry to end of file in order to make it unique in the file table to other files with the same name but in different directories
+							char openFileDir[8];
+							snprintf(openFileDir, 8, "%x", firstFATforCurDir);
+							strcat(openFileDir, arg1);
+							strcpy(openFileNames[i], openFileDir);
+
+							//Set file permission based on argument
+							if(strcmp(arg2, "r") == 0)
+								openFilePermissions[i] = 1;
+							else if(strcmp(arg2, "w") == 0)
+								openFilePermissions[i] = 2;
+							else if(strcmp(arg2, "rw") == 0 || strcmp(arg2, "wr") == 0)
+								openFilePermissions[i] = 3;
+							else
+								printf("Invalid file permission\n");
+
+							break;
+						}
+					}
+				}
+			}
+			else
+				printf("File not found\n");
+		}
+		else if(strcmp(userInput, "close") == 0)
+		{
+			scanf("%s", arg1);
+			
+			struct fileStruct tfile = searchDirForFile(ptr, firstFATforCurDir, BPB_BytesPerSector, FirstDataSector * 512, BPB_ReservedSecCnt * 512, arg1);
+
+			if(strcmp(tfile.name, "") != 0)
+			{
+				//Appends directory fat number entry to end of file in order to make it unique in the file table to other files with the same name but in different directories
+				char openFileDir[8];
+				snprintf(openFileDir, 8, "%x", firstFATforCurDir);
+				strcat(openFileDir, arg1);
+		
+				int i;
+				for(i = 0;i < fileTableSize;++i)
+				{
+					if(openFilePermissions[i] != 0 && strcmp(openFileDir, openFileNames[i]) == 0)
+					{
+						openFilePermissions[i] = 0;
+					}
+				}
+			}
+			else
+				printf("File not found\n");
+		}
+
+		else if(strcmp(userInput, "printFTable") == 0)
+		{
+			int i;
+			for(i = 0;i < fileTableSize;++i)
+			{
+				printf("%d: %s %d\n", i, openFileNames[i], openFilePermissions[i]);
 			}
 		}
 	}
