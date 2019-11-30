@@ -23,6 +23,7 @@ void getClusterLocations(FILE *ptr, int FATRegionStart, int firstFileCluster);
 void printTextFromSector(FILE *ptr, int clusterStart, int bytesPerSec);
 struct fileStruct parseFileEntry(FILE *ptr, int fileEntryAddress);
 void printFileEntry(FILE *ptr, int fileEntryAddress);
+void printFileEntryName(FILE *ptr, int fileEntryAddress);
 //void getFilesFromDirCluster(FILE *ptr, int clusterStart, int bytesPerSec);
 void getFilesFromDirCluster(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart);
 void getSizeOfFileName(FILE *ptr, int firstDirFatNumber, int bytesPerSec, int dataSectionStart, int FatSectionStart, char * fname);
@@ -67,17 +68,20 @@ void main(int argc, char *argv[])
 
 	int firstFATforCurDir = 0x2;
 
-	printf("Fat Region: 0x%x\n", BPB_ReservedSecCnt * 512);
-	printf("%08x\n", getBytesFromOffset(ptr, 4, (BPB_ReservedSecCnt * 512) + 8));	
-	getClusterLocations(ptr, BPB_ReservedSecCnt * 512, 0x1b2);
+//	printf("Fat Region: 0x%x\n", BPB_ReservedSecCnt * 512);
+//	printf("%08x\n", getBytesFromOffset(ptr, 4, (BPB_ReservedSecCnt * 512) + 8));	
+//	getClusterLocations(ptr, BPB_ReservedSecCnt * 512, 0x1b2);
 
-	printf("Data Region: 0x%x\n", FirstDataSector  * 512);
-	printTextFromSector(ptr, ((FirstDataSector + 431) * 512), BPB_BytesPerSector);
+//	printf("Data Region: 0x%x\n", FirstDataSector  * 512);
+//	printTextFromSector(ptr, ((FirstDataSector + 431) * 512), BPB_BytesPerSector);
 
-	parseFileEntry(ptr, (FirstDataSector * 512) + 32);
+//	parseFileEntry(ptr, (FirstDataSector * 512) + 32);
+	printf("Welcome to the FAT32 shell utility\n");
 
 	while(strcmp(userInput, "exit") != 0)
 	{
+		printf("\n/] ");
+
 		scanf("%s", userInput);
 
 		if(strcmp(userInput, "info") == 0)
@@ -589,6 +593,20 @@ struct fileStruct parseFileEntry(FILE *ptr, int fileEntryAddress)
 	return fs;
 }
 
+void printFileEntryName(FILE *ptr, int fileEntryAddress)
+{
+	char sname[12];
+
+	int i;
+	for(i = 0;i < 11;++i)
+	{
+		sname[i] = getBytesFromOffset(ptr, 1, fileEntryAddress + i);
+	}
+	sname[11] = '\0';
+
+	printf("%s", sname);
+}
+
 void printFileEntry(FILE *ptr, int fileEntryAddress)
 {
 	char sname[12];
@@ -637,8 +655,12 @@ void getFilesFromDirCluster(FILE *ptr, int firstDirFatNumber, int bytesPerSec, i
 				if(getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) != 0x00)
 				{
 					//Checks for Long file name entry by checking if FstClusLo is 0 and file name is not ..
-					if(getBytesFromOffset(ptr, 2, clusterStart + (i * 32) + 26) != 0x0 || (getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) == '.' && getBytesFromOffset(ptr, 1, clusterStart + (i * 32) + 1) == '.'))
-						printFileEntry(ptr, clusterStart + (i * 32));
+					if(getBytesFromOffset(ptr, 2, clusterStart + (i * 32) + 26) != 0x0 || (getBytesFromOffset(ptr, 2, clusterStart + (i * 32) + 26) == 0x0 && (getBytesFromOffset(ptr, 4, clusterStart + (i * 32) + 28) == 0x0)) || (getBytesFromOffset(ptr, 1, clusterStart + (i * 32)) == '.' && getBytesFromOffset(ptr, 1, clusterStart + (i * 32) + 1) == '.'))
+					{
+						printFileEntryName(ptr, clusterStart + (i * 32));
+						//printFileEntry(ptr, clusterStart + (i * 32));
+						printf("\n");
+					}
 				}
 				else
 					break;
